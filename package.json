@@ -1,0 +1,1 @@
+{"description":"服务器到期管家：集中记录各主机与服务的到期日，临近到期提醒。","engines":{"node":">=18"},"main":"server.js","name":"expiry-manager","scripts":{"start":"node server.js"},"version":"1.0.0"}

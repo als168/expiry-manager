@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>服务器到期管家</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f4f6f8; color: #1f2937; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 22px; margin: 4px 0 2px; }
+  .sub { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  .card { background: #fff; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .card .num { font-size: 26px; font-weight: 700; line-height: 1.1; }
+  .card .lbl { font-size: 12px; color: #6b7280; margin-top: 4px; }
+  .card.warn .num { color: #d97706; }
+  .card.bad .num { color: #dc2626; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tab { border: 1px solid #d1d5db; background: #fff; border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  .tab.active { background: #1f2937; color: #fff; border-color: #1f2937; }
+  .toolbar input[type=search] { flex: 1; min-width: 140px; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; }
+  .btn { border: 1px solid #d1d5db; background: #fff; border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
+  .btn.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .btn.danger { color: #dc2626; }
+  .btn:hover { filter: brightness(.97); }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.06); font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eef1f4; vertical-align: top; }
+  th { background: #f9fafb; color: #6b7280; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  .name { font-weight: 600; }
+  .prov { color: #6b7280; font-size: 12px; }
+  .tag { display: inline-block; background: #eef2ff; color: #3730a3; border-radius: 999px; padding: 2px 8px; font-size: 12px; white-space: nowrap; }
+  .badge { display: inline-block; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .badge.ok { background: #dcfce7; color: #166534; }
+  .badge.warn { background: #fef3c7; color: #92400e; }
+  .badge.bad { background: #fee2e2; color: #991b1b; }
+  .badge.none { background: #f3f4f6; color: #6b7280; }
+  .note { color: #6b7280; font-size: 12px; }
+  .rowbtn { background: none; border: none; color: #2563eb; cursor: pointer; font-size: 13px; padding: 2px 4px; }
+  .rowbtn.del { color: #dc2626; }
+  .empty { text-align: center; color: #6b7280; padding: 28px 0; background: #fff; border-radius: 10px; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: flex-start; justify-content: center; padding: 40px 16px; z-index: 10; }
+  .modal-bg.open { display: flex; }
+  .modal { background: #fff; border-radius: 12px; padding: 20px; width: 100%; max-width: 480px; }
+  .modal h2 { margin: 0 0 14px; font-size: 18px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 13px; color: #374151; margin-bottom: 4px; }
+  .field input, .field select, .field textarea { width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; }
+  .field textarea { resize: vertical; min-height: 56px; }
+  .field .hint { font-size: 12px; color: #9ca3af; margin-top: 3px; }
+  .modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #1f2937; color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 14px; display: none; z-index: 20; }
+  .foot { margin-top: 18px; color: #9ca3af; font-size: 12px; line-height: 1.7; }
+  @media (max-width: 640px) {
+    .cards { grid-template-columns: repeat(2, 1fr); }
+    .hide-m { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>服务器到期管家</h1>
+  <div class="sub">所有主机、域名和服务的到期日集中在一页，临近到期标红提醒。数据存在服务器上，重新部署前记得点“导出备份”。</div>
+
+  <div class="cards">
+    <div class="card"><div class="num" id="cTotal">–</div><div class="lbl">全部服务</div></div>
+    <div class="card warn"><div class="num" id="cSoon">–</div><div class="lbl">30 天内到期</div></div>
+    <div class="card bad"><div class="num" id="cExpired">–</div><div class="lbl">已过期</div></div>
+    <div class="card"><div class="num" id="cNone">–</div><div class="lbl">无到期日</div></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="tabs">
+      <button class="tab active" data-filter="all">全部</button>
+      <button class="tab" data-filter="soon">即将到期</button>
+      <button class="tab" data-filter="expired">已过期</button>
+      <button class="tab" data-filter="none">无到期日</button>
+    </div>
+    <input type="search" id="q" placeholder="搜索服务名 / 商家…">
+    <button class="btn primary" id="btnAdd">+ 新增服务</button>
+    <button class="btn" id="btnExport">导出备份</button>
+    <button class="btn" id="btnImport">导入备份</button>
+    <input type="file" id="fileImport" accept=".json,application/json" hidden>
+  </div>
+
+  <div id="list"></div>
+
+  <div class="foot">
+    剩余天数按到期日当天 0 点算；“即将到期”指 30 天内到期（含今天）。<br>
+    重新部署会清空服务器上新加的记录，部署前先点“导出备份”，部署完再“导入备份”恢复。
+  </div>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h2 id="modalTitle">新增服务</h2>
+    <form id="form">
+      <input type="hidden" id="fId">
+      <div class="field"><label>服务名称 *</label><input id="fName" required maxlength="80" placeholder="例如：Pantheon sven7"></div>
+      <div class="field"><label>商家 / 平台</label><input id="fProvider" maxlength="80" placeholder="例如：Pantheon"></div>
+      <div class="field"><label>类型</label>
+        <select id="fType"><option>主机</option><option>VPS</option><option>域名</option><option>建站</option><option>存储</option><option>服务</option><option>其他</option></select>
+      </div>
+      <div class="field"><label>到期日</label><input type="date" id="fExpiry"><div class="hint">没有固定到期日（比如免费套餐）就留空。</div></div>
+      <div class="field"><label>费用</label><input id="fCost" maxlength="40" placeholder="例如：$6.99 / 月，可留空"></div>
+      <div class="field"><label>计费周期</label>
+        <select id="fPeriod"><option value="">—</option><option>月</option><option>年</option><option>一次性</option><option>免费</option></select>
+      </div>
+      <div class="field"><label>备注</label><textarea id="fNote" maxlength="500" placeholder="例如：到期会被永久删除，去留未定"></textarea></div>
+      <div class="actions">
+        <button type="button" class="btn" id="btnCancel">取消</button>
+        <button type="submit" class="btn primary">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let services = [];
+let filter = 'all';
+
+function daysLeft(expiry) {
+  if (!expiry) return null;
+  const now = new Date(); now.setHours(0,0,0,0);
+  const d = new Date(expiry + 'T00:00:00');
+  return Math.round((d - now) / 86400000);
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function badge(days) {
+  if (days === null) return '<span class="badge none">无到期日</span>';
+  if (days < 0) return '<span class="badge bad">已过期 ' + (-days) + ' 天</span>';
+  if (days === 0) return '<span class="badge bad">今天到期</span>';
+  if (days <= 7) return '<span class="badge bad">剩 ' + days + ' 天</span>';
+  if (days <= 30) return '<span class="badge warn">剩 ' + days + ' 天</span>';
+  return '<span class="badge ok">剩 ' + days + ' 天</span>';
+}
+function sorted(list) {
+  return list.slice().sort((a, b) => {
+    if (!a.expiry && !b.expiry) return a.name.localeCompare(b.name, 'zh');
+    if (!a.expiry) return 1;
+    if (!b.expiry) return -1;
+    return a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : a.name.localeCompare(b.name, 'zh');
+  });
+}
+function render() {
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  let total = services.length, soon = 0, expired = 0, none = 0;
+  for (const s of services) {
+    const d = daysLeft(s.expiry);
+    if (d === null) none++;
+    else if (d < 0) expired++;
+    else if (d <= 30) soon++;
+  }
+  document.getElementById('cTotal').textContent = total;
+  document.getElementById('cSoon').textContent = soon;
+  document.getElementById('cExpired').textContent = expired;
+  document.getElementById('cNone').textContent = none;
+
+  let list = sorted(services).filter(s => {
+    const d = daysLeft(s.expiry);
+    if (filter === 'soon') return d !== null && d >= 0 && d <= 30;
+    if (filter === 'expired') return d !== null && d < 0;
+    if (filter === 'none') return d === null;
+    return true;
+  });
+  if (q) list = list.filter(s => (s.name + ' ' + s.provider + ' ' + (s.note || '')).toLowerCase().includes(q));
+
+  const el = document.getElementById('list');
+  if (!list.length) { el.innerHTML = '<div class="empty">没有符合条件的服务，点右上角“新增服务”加一个。</div>'; return; }
+  let html = '<table><thead><tr><th>服务</th><th>类型</th><th>到期日</th><th>剩余</th><th class="hide-m">费用</th><th class="hide-m">备注</th><th>操作</th></tr></thead><tbody>';
+  for (const s of list) {
+    const d = daysLeft(s.expiry);
+    html += '<tr><td><div class="name">' + esc(s.name) + '</div><div class="prov">' + esc(s.provider) + '</div></td>'
+      + '<td><span class="tag">' + esc(s.type) + '</span></td>'
+      + '<td>' + (s.expiry ? esc(s.expiry) : '—') + '</td>'
+      + '<td>' + badge(d) + '</td>'
+      + '<td class="hide-m">' + esc(s.cost || '') + (s.period ? ' / ' + esc(s.period) : '') + '</td>'
+      + '<td class="hide-m note">' + esc(s.note || '') + '</td>'
+      + '<td style="white-space:nowrap"><button class="rowbtn" data-edit="' + esc(s.id) + '">编辑</button><button class="rowbtn del" data-del="' + esc(s.id) + '">删除</button></td></tr>';
+  }
+  el.innerHTML = html + '</tbody></table>';
+}
+async function load() {
+  const r = await fetch('/api/services');
+  const j = await r.json();
+  services = j.services || [];
+  render();
+}
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 2200);
+}
+function openModal(s) {
+  document.getElementById('modalTitle').textContent = s ? '编辑服务' : '新增服务';
+  document.getElementById('fId').value = s ? s.id : '';
+  document.getElementById('fName').value = s ? s.name : '';
+  document.getElementById('fProvider').value = s ? s.provider : '';
+  document.getElementById('fType').value = s ? s.type : '主机';
+  document.getElementById('fExpiry').value = s ? (s.expiry || '') : '';
+  document.getElementById('fCost').value = s ? s.cost : '';
+  document.getElementById('fPeriod').value = s ? s.period : '';
+  document.getElementById('fNote').value = s ? s.note : '';
+  document.getElementById('modalBg').classList.add('open');
+}
+function closeModal() { document.getElementById('modalBg').classList.remove('open'); }
+
+document.getElementById('btnAdd').onclick = () => openModal(null);
+document.getElementById('btnCancel').onclick = closeModal;
+document.getElementById('modalBg').addEventListener('click', e => { if (e.target.id === 'modalBg') closeModal(); });
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active'); filter = t.dataset.filter; render();
+});
+document.getElementById('q').oninput = render;
+document.getElementById('list').addEventListener('click', async e => {
+  const ed = e.target.dataset.edit, del = e.target.dataset.del;
+  if (ed) { const s = services.find(x => x.id === ed); if (s) openModal(s); }
+  if (del) {
+    const s = services.find(x => x.id === del);
+    if (s && confirm('确定删除「' + s.name + '」吗？')) {
+      const r = await fetch('/api/services/' + encodeURIComponent(del), { method: 'DELETE' });
+      if (r.ok) { toast('已删除'); load(); } else toast('删除失败');
+    }
+  }
+});
+document.getElementById('form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const body = {
+    name: document.getElementById('fName').value.trim(),
+    provider: document.getElementById('fProvider').value.trim(),
+    type: document.getElementById('fType').value,
+    expiry: document.getElementById('fExpiry').value,
+    cost: document.getElementById('fCost').value.trim(),
+    period: document.getElementById('fPeriod').value,
+    note: document.getElementById('fNote').value.trim()
+  };
+  if (!body.name) { toast('请填写服务名称'); return; }
+  const id = document.getElementById('fId').value;
+  const r = await fetch(id ? '/api/services/' + encodeURIComponent(id) : '/api/services', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (r.ok) { closeModal(); toast(id ? '已保存' : '已添加'); load(); }
+  else toast('保存失败');
+});
+document.getElementById('btnExport').onclick = () => {
+  const blob = new Blob([JSON.stringify(services, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'expiry-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('备份已下载');
+};
+document.getElementById('btnImport').onclick = () => document.getElementById('fileImport').click();
+document.getElementById('fileImport').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try {
+    const text = await f.text();
+    const data = JSON.parse(text);
+    const list = Array.isArray(data) ? data : data.services;
+    if (!Array.isArray(list)) throw new Error('bad file');
+    if (!confirm('导入会替换当前全部 ' + services.length + ' 条记录，确定吗？')) return;
+    const r = await fetch('/api/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ services: list }) });
+    const j = await r.json();
+    if (r.ok) { toast('已导入 ' + j.count + ' 条'); load(); } else toast('导入失败');
+  } catch (err) { toast('文件格式不对，需要之前导出的 JSON'); }
+  e.target.value = '';
+});
+load();
+</script>
+</body>
+</html>

@@ -43,7 +43,7 @@ function cleanService(input, keepId) {
   const expiry = String(input.expiry || '').trim();
   s.expiry = /^\d{4}-\d{2}-\d{2}$/.test(expiry) ? expiry : null;
   s.cost = String(input.cost || '').trim();
-  s.period = ['月', '年', '一次性', '免费', ''].includes(input.period) ? input.period : '';
+  s.period = ['日', '月', '年', '一次性', '免费', ''].includes(input.period) ? input.period : '';
   s.note = String(input.note || '').trim();
   return s;
 }
